@@ -1,0 +1,18 @@
+version: '3'
+
+services:
+  backup:
+    build: .
+    hostname: myhostname
+    restart: always
+    privileged: true
+    volumes:
+      - ~/test-data:/data
+      - ~/.config/rclone:/root/.config/rclone
+    environment:
+      - RESTIC_REPOSITORY=rclone:rclone_repo_name:backup
+      - RESTIC_PASSWORD=repo_pw
+      - BACKUP_CRON=* * * * *
+      - RESTIC_FORGET_ARGS=--prune --keep-last 3
+      - RESTIC_JOB_ARGS=
+      - MAILX_ARGS=-r 'from@example.org' -s 'Result of the last restic backup run' -S smtp='smtp.example.org:587' -S smtp-use-starttls -S smtp-auth-user='username' -S smtp-auth-password='password' 'to@example.org'
