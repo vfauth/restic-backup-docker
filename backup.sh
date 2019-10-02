@@ -11,6 +11,17 @@ logLast() {
   echo "$1" >> ${lastLogfile}
 }
 
+sendEmail() {
+  if [ -n "${MAILX_ARGS}" ]; then
+      sh -c "mailx -v -S sendwait -s $1 ${MAILX_ARGS} < ${lastLogfile} > ${lastMailLogfile} 2>&1"
+      if [ $? == 0 ]; then
+          echo "Mail notification successfully sent."
+      else
+          echo "Sending mail notification FAILED. Check ${lastMailLogfile} for further information."
+      fi
+  fi
+}
+
 start=`date +%s`
 rm -f ${lastLogfile} ${lastMailLogfile}
 echo "Starting Backup at $(date +"%Y-%m-%d %H:%M:%S")"
@@ -21,6 +32,10 @@ logLast "RESTIC_FORGET_ARGS: ${RESTIC_FORGET_ARGS}"
 logLast "RESTIC_JOB_ARGS: ${RESTIC_JOB_ARGS}"
 logLast "RESTIC_REPOSITORY: ${RESTIC_REPOSITORY}"
 logLast "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}"
+
+# Make sure only one backup is running at the same time
+exec 9>/var/lock/backup.lock || exit 1
+flock -n 9 || { logLast  "Backup is already running. Terminating."; sendEmail "'Restic backup already in progress'"; exit 1; }
 
 # Do not save full backup log to logfile but to backup-last.log
 restic backup /data ${RESTIC_JOB_ARGS} --tag=${RESTIC_TAG?"Missing environment variable RESTIC_TAG"} >> ${lastLogfile} 2>&1
@@ -52,11 +67,4 @@ fi
 end=`date +%s`
 echo "Finished Backup at $(date +"%Y-%m-%d %H:%M:%S") after $((end-start)) seconds"
 
-if [ -n "${MAILX_ARGS}" ]; then
-    sh -c "mailx -v -S sendwait ${MAILX_ARGS} < ${lastLogfile} > ${lastMailLogfile} 2>&1"
-    if [ $? == 0 ]; then
-        echo "Mail notification successfully sent."
-    else
-        echo "Sending mail notification FAILED. Check ${lastMailLogfile} for further information."
-    fi
-fi
+sendEmail "'Result of the last restic backup run'"
